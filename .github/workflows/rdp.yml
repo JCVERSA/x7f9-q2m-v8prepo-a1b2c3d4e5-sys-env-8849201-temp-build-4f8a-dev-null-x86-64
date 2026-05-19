@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ==========================================
-      # OPTION 2 : RESTAURATION DE LA MÉMOIRE (CACHE)
+      # RESTAURATION DE LA MÉMOIRE (CACHE GITHUB)
       # ==========================================
       - name: Restaurer les données persistantes
         id: cache-rdp
@@ -24,7 +24,6 @@ jobs:
           restore-keys: |
             rdp-data-v1-
 
-      # Initialisation des dossiers de données pour forcer la persistance
       - name: Initialiser l'arborescence persistante
         shell: powershell
         run: |
@@ -52,6 +51,7 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
+          # Sécurisation stricte : RDP autorisé uniquement via l'IP VPN Tailscale
           netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 remoteip=100.64.0.0/10
 
@@ -68,7 +68,7 @@ jobs:
           }
 
       # ==========================================
-      # OPTION 1 : INSTALLATION DES OUTILS DEV (WINGET)
+      # INSTALLATION DES OUTILS DEV (CORRIGÉE)
       # ==========================================
       - name: Installer les applications de travail
         shell: powershell
@@ -82,7 +82,8 @@ jobs:
           )
           foreach ($pkg in $packages) {
               Write-Host "Installation de $pkg..."
-              winget install --id $pkg --silent --accept-source-agreements --accept-package-agreements --upgrade-method installer
+              # L'argument qui causait le crash a été retiré ici
+              winget install --id $pkg --silent --accept-source-agreements --accept-package-agreements
           }
 
       # ==========================================
@@ -91,12 +92,10 @@ jobs:
       - name: Rediriger les données Android Studio vers le dossier persistant
         shell: powershell
         run: |
-          # Redirection des variables d'environnement cruciales pour Android Studio et Gradle
           [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "C:\RDP_Data\AndroidConfig\.gradle", "Machine")
           [Environment]::SetEnvironmentVariable("ANDROID_USER_HOME", "C:\RDP_Data\AndroidConfig\.android", "Machine")
           [Environment]::SetEnvironmentVariable("ANDROID_EMULATOR_HOME", "C:\RDP_Data\AndroidConfig\.android", "Machine")
           
-          # Application immédiate dans le runner actuel
           echo "GRADLE_USER_HOME=C:\RDP_Data\AndroidConfig\.gradle" >> $env:GITHUB_ENV
           echo "ANDROID_USER_HOME=C:\RDP_Data\AndroidConfig\.android" >> $env:GITHUB_ENV
 
