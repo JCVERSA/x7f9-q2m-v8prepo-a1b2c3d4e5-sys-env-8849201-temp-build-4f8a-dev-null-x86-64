@@ -24,12 +24,22 @@ jobs:
           restore-keys: |
             rdp-data-v1-
 
-      - name: Initialiser le dossier de données si vide
+      # Initialisation des dossiers de données pour forcer la persistance
+      - name: Initialiser l'arborescence persistante
         shell: powershell
         run: |
-          if (-not (Test-Path "C:\RDP_Data")) {
-              New-Item -ItemType Directory -Path "C:\RDP_Data" -Force
-              Set-Content -Path "C:\RDP_Data\LISEZ_MOI.txt" -Value "Mettez tous vos fichiers importants et profils ici pour qu'ils soient sauvegardés !"
+          $dirs = @(
+              "C:\RDP_Data",
+              "C:\RDP_Data\Projects",
+              "C:\RDP_Data\ChromeProfile",
+              "C:\RDP_Data\AndroidConfig\.android",
+              "C:\RDP_Data\AndroidConfig\.AndroidStudio",
+              "C:\RDP_Data\AndroidConfig\.gradle"
+          )
+          foreach ($dir in $dirs) {
+              if (-not (Test-Path $dir)) {
+                  New-Item -ItemType Directory -Path $dir -Force
+              }
           }
 
       # ==========================================
@@ -58,16 +68,37 @@ jobs:
           }
 
       # ==========================================
-      # OPTION 1 : INSTALLATION DES LOGICIELS (WINGET)
+      # OPTION 1 : INSTALLATION DES OUTILS DEV (WINGET)
       # ==========================================
       - name: Installer les applications de travail
         shell: powershell
         run: |
-          Write-Host "Installation de Google Chrome..."
-          winget install --id Google.Chrome --silent --accept-source-agreements --accept-package-agreements
+          $packages = @(
+              "Google.Chrome",
+              "Microsoft.VisualStudioCode",
+              "Git.Git",
+              "Oracle.JDK.21",
+              "Google.AndroidStudio"
+          )
+          foreach ($pkg in $packages) {
+              Write-Host "Installation de $pkg..."
+              winget install --id $pkg --silent --accept-source-agreements --accept-package-agreements --upgrade-method installer
+          }
+
+      # ==========================================
+      # FORCER LA PERSISTANCE D'ANDROID STUDIO
+      # ==========================================
+      - name: Rediriger les données Android Studio vers le dossier persistant
+        shell: powershell
+        run: |
+          # Redirection des variables d'environnement cruciales pour Android Studio et Gradle
+          [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "C:\RDP_Data\AndroidConfig\.gradle", "Machine")
+          [Environment]::SetEnvironmentVariable("ANDROID_USER_HOME", "C:\RDP_Data\AndroidConfig\.android", "Machine")
+          [Environment]::SetEnvironmentVariable("ANDROID_EMULATOR_HOME", "C:\RDP_Data\AndroidConfig\.android", "Machine")
           
-          Write-Host "Installation de VS Code..."
-          winget install --id Microsoft.VisualStudioCode --silent --accept-source-agreements --accept-package-agreements
+          # Application immédiate dans le runner actuel
+          echo "GRADLE_USER_HOME=C:\RDP_Data\AndroidConfig\.gradle" >> $env:GITHUB_ENV
+          echo "ANDROID_USER_HOME=C:\RDP_Data\AndroidConfig\.android" >> $env:GITHUB_ENV
 
       # ==========================================
       # RÉSEAU VPN (TAILSCALE)
@@ -115,8 +146,7 @@ jobs:
           Write-Host "Utilisateur          : Neon" -ForegroundColor Cyan
           Write-Host "Dossier Persistant   : C:\RDP_Data" -ForegroundColor Yellow
           Write-Host "-----------------------------------------------"
-          Write-Host "IMPORTANT : Sauvegardez vos fichiers et profils"
-          Write-Host "dans 'C:\RDP_Data' pour qu'ils persistent !"
+          Write-Host "Créez vos projets Android dans : C:\RDP_Data\Projects" -ForegroundColor Yellow
           Write-Host "==============================================="`n
 
           $runtime = 0
