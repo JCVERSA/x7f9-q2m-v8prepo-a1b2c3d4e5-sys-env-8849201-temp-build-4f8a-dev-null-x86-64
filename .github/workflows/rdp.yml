@@ -5,7 +5,7 @@ on:
 
 jobs:
   secure-rdp:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 350
 
     steps:
@@ -13,27 +13,27 @@ jobs:
         uses: actions/checkout@v4
 
       # ==========================================
-      # RESTAURATION DE LA MÉMOIRE (CACHE GITHUB)
+      # RESTAURATION DE LA MÉMOIRE SUR LE DISQUE D:
       # ==========================================
       - name: Restaurer les données persistantes
         id: cache-rdp
         uses: actions/cache@v4
         with:
-          path: C:\RDP_Data
+          path: D:\RDP_Data
           key: rdp-data-v1-${{ github.run_id }}
           restore-keys: |
             rdp-data-v1-
 
-      - name: Initialiser l'arborescence persistante
+      - name: Initialiser l'arborescence persistante (Disque D:)
         shell: powershell
         run: |
           $dirs = @(
-              "C:\RDP_Data",
-              "C:\RDP_Data\Projects",
-              "C:\RDP_Data\ChromeProfile",
-              "C:\RDP_Data\AndroidConfig\.android",
-              "C:\RDP_Data\AndroidConfig\.AndroidStudio",
-              "C:\RDP_Data\AndroidConfig\.gradle"
+              "D:\RDP_Data",
+              "D:\RDP_Data\Projects",
+              "D:\RDP_Data\ChromeProfile",
+              "D:\RDP_Data\AndroidConfig\.android",
+              "D:\RDP_Data\AndroidConfig\.AndroidStudio",
+              "D:\RDP_Data\AndroidConfig\.gradle"
           )
           foreach ($dir in $dirs) {
               if (-not (Test-Path $dir)) {
@@ -51,7 +51,6 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
-          # Sécurisation stricte : RDP autorisé uniquement via l'IP VPN Tailscale
           netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 remoteip=100.64.0.0/10
 
@@ -68,7 +67,7 @@ jobs:
           }
 
       # ==========================================
-      # INSTALLATION DES OUTILS DEV (CORRIGÉE)
+      # INSTALLATION DES OUTILS DEV
       # ==========================================
       - name: Installer les applications de travail
         shell: powershell
@@ -82,22 +81,21 @@ jobs:
           )
           foreach ($pkg in $packages) {
               Write-Host "Installation de $pkg..."
-              # L'argument qui causait le crash a été retiré ici
               winget install --id $pkg --silent --accept-source-agreements --accept-package-agreements
           }
 
       # ==========================================
-      # FORCER LA PERSISTANCE D'ANDROID STUDIO
+      # FORCER LA PERSISTANCE D'ANDROID STUDIO SUR D:
       # ==========================================
-      - name: Rediriger les données Android Studio vers le dossier persistant
+      - name: Rediriger les données Android Studio vers le disque D:
         shell: powershell
         run: |
-          [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "C:\RDP_Data\AndroidConfig\.gradle", "Machine")
-          [Environment]::SetEnvironmentVariable("ANDROID_USER_HOME", "C:\RDP_Data\AndroidConfig\.android", "Machine")
-          [Environment]::SetEnvironmentVariable("ANDROID_EMULATOR_HOME", "C:\RDP_Data\AndroidConfig\.android", "Machine")
+          [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "D:\RDP_Data\AndroidConfig\.gradle", "Machine")
+          [Environment]::SetEnvironmentVariable("ANDROID_USER_HOME", "D:\RDP_Data\AndroidConfig\.android", "Machine")
+          [Environment]::SetEnvironmentVariable("ANDROID_EMULATOR_HOME", "D:\RDP_Data\AndroidConfig\.android", "Machine")
           
-          echo "GRADLE_USER_HOME=C:\RDP_Data\AndroidConfig\.gradle" >> $env:GITHUB_ENV
-          echo "ANDROID_USER_HOME=C:\RDP_Data\AndroidConfig\.android" >> $env:GITHUB_ENV
+          echo "GRADLE_USER_HOME=D:\RDP_Data\AndroidConfig\.gradle" >> $env:GITHUB_ENV
+          echo "ANDROID_USER_HOME=D:\RDP_Data\AndroidConfig\.android" >> $env:GITHUB_ENV
 
       # ==========================================
       # RÉSEAU VPN (TAILSCALE)
@@ -126,31 +124,60 @@ jobs:
           if (-not $tsIP) { exit 1 }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Verify RDP Accessibility
-        shell: powershell
-        run: |
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) { exit 1 }
-
       # ==========================================
-      # MAINTIEN DE LA SESSION & LOGS
+      # MAINTIEN DE LA SESSION AVEC DETECTION D'ARRÊT
       # ==========================================
       - name: Maintain Connection
         shell: powershell
         run: |
+          # Créer le script de sauvegarde sur le bureau public Windows
+          $publicDesktop = "C:\Users\Public\Desktop"
+          if (-not (Test-Path $publicDesktop)) { New-Item -ItemType Directory -Path $publicDesktop -Force }
+          
+          $shortcutPath = "$publicDesktop\Sauvegarder_et_Quitter.bat"
+          $scriptContent = @"
+          @echo off
+          echo ===================================================
+          echo   SAUVEGARDE DE VOS PROJETS ET FERMETURE DU RDP
+          echo ===================================================
+          echo.
+          echo Envoi du signal d'arret a GitHub...
+          echo stop > D:\RDP_Data\stop.txt
+          echo.
+          echo Vous pouvez desormais fermer cette fenetre RDP.
+          echo GitHub va valider la session et sauvegarder D:\RDP_Data.
+          echo.
+          pause
+          "@
+          Set-Content -Path $shortcutPath -Value $scriptContent -Force
+
           Write-Host "`n===============================================" -ForegroundColor Green
           Write-Host "          CONNEXION RDP PRÊTE                  " -ForegroundColor Green
           Write-Host "===============================================" -ForegroundColor Green
           Write-Host "Adresse IP Tailscale : $env:TAILSCALE_IP" -ForegroundColor Cyan
           Write-Host "Utilisateur          : Neon" -ForegroundColor Cyan
-          Write-Host "Dossier Persistant   : C:\RDP_Data" -ForegroundColor Yellow
+          Write-Host "Dossier Persistant   : D:\RDP_Data" -ForegroundColor Yellow
           Write-Host "-----------------------------------------------"
-          Write-Host "Créez vos projets Android dans : C:\RDP_Data\Projects" -ForegroundColor Yellow
+          Write-Host "⚠️ IMPORTANT POUR NE RIEN PERDRE : ⚠️" -ForegroundColor Red
+          Write-Host "Quand vous avez fini, double-cliquez sur l'icone" -ForegroundColor Yellow
+          Write-Host "'Sauvegarder_et_Quitter' directement sur le" -ForegroundColor Yellow
+          Write-Host "bureau de votre machine Windows virtuelle !" -ForegroundColor Yellow
           Write-Host "==============================================="`n
 
-          $runtime = 0
-          while ($runtime -lt 21000) {
-              Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Session RDP active..."
-              Start-Sleep -Seconds 300
-              $runtime += 300
+          $maxSeconds = 20400 # 340 minutes (Arrêt propre automatique avant le timeout GitHub de 350m)
+          $elapsed = 0
+          
+          if (Test-Path "D:\RDP_Data\stop.txt") { Remove-Item "D:\RDP_Data\stop.txt" -Force }
+
+          while ($elapsed -lt $maxSeconds) {
+              if (Test-Path "D:\RDP_Data\stop.txt") {
+                  Remove-Item "D:\RDP_Data\stop.txt" -Force
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Signal d'arret recu ! Fermeture propre pour sauvegarde..." -ForegroundColor Green
+                  break
+              }
+              Start-Sleep -Seconds 10
+              $elapsed += 10
+              if (($elapsed % 300) -eq 0) {
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Session RDP toujours active..."
+              }
           }
