@@ -9,13 +9,13 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: Checkout repository
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
       # ==========================================
       # RESTAURATION DE LA MÉMOIRE SUR LE DISQUE D:
       # ==========================================
-      - name: Restaurer les données persistantes
+      - name: "Restaurer les données persistantes"
         id: cache-rdp
         uses: actions/cache@v4
         with:
@@ -24,7 +24,7 @@ jobs:
           restore-keys: |
             rdp-data-v1-
 
-      - name: Initialiser l'arborescence persistante (Disque D:)
+      - name: "Initialiser l'arborescence persistante (Disque D)"
         shell: powershell
         run: |
           $dirs = @(
@@ -44,7 +44,7 @@ jobs:
       # ==========================================
       # CONFIGURATION DU SYSTÈME & RDP
       # ==========================================
-      - name: Configure Core RDP Settings
+      - name: "Configure Core RDP Settings"
         shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
@@ -56,7 +56,7 @@ jobs:
 
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User
+      - name: "Create RDP User"
         shell: powershell
         run: |
           $securePass = ConvertTo-SecureString "${{ secrets.RDP_PASS }}" -AsPlainText -Force
@@ -69,7 +69,7 @@ jobs:
       # ==========================================
       # INSTALLATION DES OUTILS DEV
       # ==========================================
-      - name: Installer les applications de travail
+      - name: "Installer les applications de travail"
         shell: powershell
         run: |
           $packages = @(
@@ -87,7 +87,7 @@ jobs:
       # ==========================================
       # FORCER LA PERSISTANCE D'ANDROID STUDIO SUR D:
       # ==========================================
-      - name: Rediriger les données Android Studio vers le disque D:
+      - name: "Rediriger les données Android Studio vers le disque D"
         shell: powershell
         run: |
           [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "D:\RDP_Data\AndroidConfig\.gradle", "Machine")
@@ -100,7 +100,7 @@ jobs:
       # ==========================================
       # RÉSEAU VPN (TAILSCALE)
       # ==========================================
-      - name: Install Tailscale
+      - name: "Install Tailscale"
         shell: powershell
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
@@ -110,7 +110,7 @@ jobs:
           if ($process.ExitCode -ne 0) { exit 1 }
           Remove-Item $installerPath -Force
 
-      - name: Establish Tailscale Connection
+      - name: "Establish Tailscale Connection"
         shell: powershell
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
@@ -127,10 +127,9 @@ jobs:
       # ==========================================
       # MAINTIEN DE LA SESSION AVEC DETECTION D'ARRÊT
       # ==========================================
-      - name: Maintain Connection
+      - name: "Maintain Connection"
         shell: powershell
         run: |
-          # Créer le script de sauvegarde sur le bureau public Windows
           $publicDesktop = "C:\Users\Public\Desktop"
           if (-not (Test-Path $publicDesktop)) { New-Item -ItemType Directory -Path $publicDesktop -Force }
           
@@ -160,11 +159,11 @@ jobs:
           Write-Host "-----------------------------------------------"
           Write-Host "⚠️ IMPORTANT POUR NE RIEN PERDRE : ⚠️" -ForegroundColor Red
           Write-Host "Quand vous avez fini, double-cliquez sur l'icone" -ForegroundColor Yellow
-          Write-Host "'Sauvegarder_et_Quitter' directement sur le" -ForegroundColor Yellow
-          Write-Host "bureau de votre machine Windows virtuelle !" -ForegroundColor Yellow
+          Write-Host "  'Sauvegarder_et_Quitter' directement sur le" -ForegroundColor Yellow
+          Write-Host "  bureau de votre machine Windows virtuelle !" -ForegroundColor Yellow
           Write-Host "==============================================="`n
 
-          $maxSeconds = 20400 # 340 minutes (Arrêt propre automatique avant le timeout GitHub de 350m)
+          $maxSeconds = 20400
           $elapsed = 0
           
           if (Test-Path "D:\RDP_Data\stop.txt") { Remove-Item "D:\RDP_Data\stop.txt" -Force }
