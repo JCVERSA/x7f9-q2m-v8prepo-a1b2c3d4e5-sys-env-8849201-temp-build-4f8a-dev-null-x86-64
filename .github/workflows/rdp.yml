@@ -1,86 +1,94 @@
-name: RDP-Robust-Cache-Final
+name: RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp:
+  secure-rdp:
     runs-on: windows-2025
-    timeout-minutes: 350 # Arrêt automatique de sécurité générale à 5h50
-    
+    timeout-minutes: 350
+
     steps:
-      - name: "Initialisation du dépôt"
+      - name: "Checkout repository"
         uses: actions/checkout@v4
 
-      # Création des dossiers sur D: avant la restauration du cache
-      - name: "Préparation de l'espace disque D:"
-        shell: powershell
-        run: |
-          if (!(Test-Path "D:\RDP_Data\FirefoxProfile")) { New-Item -ItemType Directory -Force -Path "D:\RDP_Data\FirefoxProfile" }
-          if (!(Test-Path "D:\RDP_Data\Projects")) { New-Item -ItemType Directory -Force -Path "D:\RDP_Data\Projects" }
-
-      - name: "Restaurer le profil Firefox"
+      # ==========================================
+      # RESTAURATION DE LA MÉMOIRE SUR LE DISQUE D:
+      # ==========================================
+      - name: "Restaurer les données persistantes"
+        id: cache-rdp
         uses: actions/cache@v4
         with:
-          path: D:\RDP_Data\FirefoxProfile
-          key: firefox-profile-${{ github.run_id }}
+          path: D:\RDP_Data
+          key: rdp-data-v1-${{ github.run_id }}
           restore-keys: |
-            firefox-profile-
+            rdp-data-v1-
 
-      - name: "Restaurer les Projets de Code"
-        uses: actions/cache@v4
-        with:
-          path: D:\RDP_Data\Projects
-          key: rdp-projects-${{ github.run_id }}
-          restore-keys: |
-            rdp-projects-
-
-      - name: "Installation et Configuration des Applications"
+      - name: "Initialiser l'arborescence persistante (Disque D)"
         shell: powershell
         run: |
-          # Configuration RDP et activation des accès
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          
-          # Configuration du compte utilisateur personnalisé "Neon" avec ton secret de passe
-          Rename-LocalUser -Name "runneradmin" -NewName "Neon"
-          $Password = ConvertTo-SecureString "${{ secrets.RDP_PASS }}" -AsPlainText -Force
-          Set-LocalUser -Name "Neon" -Password $Password
-          
-          # FIX CRITIQUE : Mise à jour des sources Winget en forçant la non-interactivité sans argument invalide
-          winget source update --disable-interactivity
-          
-          # Installation des outils requis avec gestion des échecs (Retry)
-          $apps = @("Microsoft.VisualStudioCode", "Mozilla.Firefox", "Oracle.JDK.21")
-          foreach ($app in $apps) {
-              $retry = 0
-              $success = $false
-              while (($retry -lt 3) -and ($success -eq $false)) {
-                  try {
-                      Write-Host "Installation de $app (Tentative $($retry + 1)/3)..."
-                      # Ici l'argument '--accept-source-agreements' est parfaitement valide et accepté par la commande install
-                      winget install --id $app --silent --accept-source-agreements --accept-package-agreements --disable-interactivity -e
-                      $success = $true
-                  } catch {
-                      $retry++
-                      Write-Host "Échec de l'installation de $app. Nouvelle tentative dans 10 secondes..."
-                      Start-Sleep -Seconds 10
-                  }
+          $dirs = @(
+              "D:\RDP_Data",
+              "D:\RDP_Data\Projects",
+              "D:\RDP_Data\AndroidConfig\.android",
+              "D:\RDP_Data\AndroidConfig\.AndroidStudio",
+              "D:\RDP_Data\AndroidConfig\.gradle"
+          )
+          foreach ($dir in $dirs) {
+              if (-not (Test-Path $dir)) {
+                  New-Item -ItemType Directory -Path $dir -Force
               }
           }
 
-      - name: "Configuration de l'environnement persistant"
+      # ==========================================
+      # CONFIGURATION DU SYSTÈME & RDP
+      # ==========================================
+      - name: "Configure Core RDP Settings"
         shell: powershell
         run: |
-          # Configuration du raccourci Firefox pour charger le profil sur le disque D:
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 remoteip=100.64.0.0/10
+
+          Restart-Service -Name TermService -Force
+
+      - name: "Create RDP User"
+        shell: powershell
+        run: |
+          $securePass = ConvertTo-SecureString "${{ secrets.RDP_PASS }}" -AsPlainText -Force
+          if (-not (Get-LocalUser -Name "Neon" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "Neon" -Password $securePass -AccountNeverExpires
+              Add-LocalGroupMember -Group "Administrators" -Member "Neon"
+              Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Neon"
+          }
+
+      # ==========================================
+      # INSTALLATION DES OUTILS DEV
+      # ==========================================
+      - name: "Installer les applications de travail"
+        shell: powershell
+        run: |
+          $packages = @(
+              "Mozilla.Firefox",
+              "Microsoft.VisualStudioCode",
+              "Git.Git",
+              "Oracle.JDK.21",
+              "Google.AndroidStudio"
+          )
+          foreach ($pkg in $packages) {
+              Write-Host "Installation de $pkg..."
+              winget install --id $pkg --silent --accept-source-agreements --accept-package-agreements --disable-interactivity -e
+          }
+
+      - name: "Configuration de Firefox (Profil Persistant)"
+        shell: powershell
+        run: |
           $shortcutPath = "C:\Users\Public\Desktop\Firefox.lnk"
           $targetPath = "C:\Program Files\Mozilla Firefox\firefox.exe"
-          
-          if ((Get-ChildItem "D:\RDP_Data\FirefoxProfile").Count -eq 0) {
-              $arguments = ""
-          } else {
-              $arguments = "--profile `"D:\RDP_Data\FirefoxProfile`""
-          }
+          $arguments = "-profile `"D:\RDP_Data\FirefoxProfile`""
           
           $WScriptShell = New-Object -ComObject WScript.Shell
           $Shortcut = $WScriptShell.CreateShortcut($shortcutPath)
@@ -88,64 +96,117 @@ jobs:
           $Shortcut.Arguments = $arguments
           $Shortcut.Save()
 
-      - name: "Connexion sécurisée Tailscale et Informations RDP"
+      # ==========================================
+      # FORCER LA PERSISTANCE D'ANDROID STUDIO SUR D:
+      # ==========================================
+      - name: "Rediriger les données Android Studio vers le disque D"
         shell: powershell
         run: |
-          # Installation de Tailscale
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile "$env:TEMP\ts.msi"
-          Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\ts.msi`" /quiet" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
+          [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "D:\RDP_Data\AndroidConfig\.gradle", "Machine")
+          [Environment]::SetEnvironmentVariable("ANDROID_USER_HOME", "D:\RDP_Data\AndroidConfig\.android", "Machine")
+          [Environment]::SetEnvironmentVariable("ANDROID_EMULATOR_HOME", "D:\RDP_Data\AndroidConfig\.android", "Machine")
           
-          # Récupération de l'adresse IP Tailscale assignée
-          $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4).Trim()
+          echo "GRADLE_USER_HOME=D:\RDP_Data\AndroidConfig\.gradle" >> $env:GITHUB_ENV
+          echo "ANDROID_USER_HOME=D:\RDP_Data\AndroidConfig\.android" >> $env:GITHUB_ENV
 
-          # Menu affichant les informations essentielles de connexion
-          Write-Host "=========================================================="
-          Write-Host "            INFORMATIONS DE CONNEXION RDP                 "
-          Write-Host "=========================================================="
-          Write-Host "Adresse IP RDP (Tailscale) : $tsIP"
-          Write-Host "Nom d'utilisateur          : Neon"
-          Write-Host "Mot de passe               : [Utilise ton secret RDP_PASS]"
-          Write-Host "=========================================================="
-
-      - name: "Boucle de maintien de session"
+      # ==========================================
+      # RÉSEAU VPN (TAILSCALE)
+      # ==========================================
+      - name: "Install Tailscale"
         shell: powershell
         run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          $process = Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { exit 1 }
+          Remove-Item $installerPath -Force
+
+      - name: "Establish Tailscale Connection"
+        shell: powershell
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 12) {
+              Start-Sleep -Seconds 5
+              $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4).Trim()
+              $retries++
+          }
+          if (-not $tsIP) { exit 1 }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      # ==========================================
+      # MAINTIEN DE LA SESSION AVEC DETECTION D'ARRÊT
+      # ==========================================
+      - name: "Maintain Connection"
+        shell: powershell
+        run: |
+          $publicDesktop = "C:\Users\Public\Desktop"
+          if (-not (Test-Path $publicDesktop)) { New-Item -ItemType Directory -Path $publicDesktop -Force }
+          
+          $shortcutPath = "$publicDesktop\Sauvegarder_et_Quitter.bat"
+          $scriptContent = @"
+          @echo off
+          echo ===================================================
+          echo   SAUVEGARDE DE VOS PROJETS ET FERMETURE DU RDP
+          echo ===================================================
+          echo.
+          echo Envoi du signal d'arret a GitHub...
+          echo stop > D:\RDP_Data\stop.txt
+          echo.
+          echo Vous pouvez desormais fermer cette fenetre RDP.
+          echo GitHub va valider la session et sauvegarder D:\RDP_Data.
+          echo.
+          pause
+          "@
+          Set-Content -Path $shortcutPath -Value $scriptContent -Force
+
+          Write-Host "`n===============================================" -ForegroundColor Green
+          Write-Host "          CONNEXION RDP PRÊTE                  " -ForegroundColor Green
+          Write-Host "===============================================" -ForegroundColor Green
+          Write-Host "Adresse IP Tailscale : $env:TAILSCALE_IP" -ForegroundColor Cyan
+          Write-Host "Utilisateur          : Neon" -ForegroundColor Cyan
+          Write-Host "Mot de passe         : [Utilisez votre secret RDP_PASS]" -ForegroundColor Cyan
+          Write-Host "Dossier Persistant   : D:\RDP_Data" -ForegroundColor Yellow
+          Write-Host "-----------------------------------------------"
+          Write-Host "⚠️ IMPORTANT POUR NE RIEN PERDRE : ⚠️" -ForegroundColor Red
+          Write-Host "Quand vous avez fini, double-cliquez sur l'icone" -ForegroundColor Yellow
+          Write-Host "  'Sauvegarder_et_Quitter' directement sur le" -ForegroundColor Yellow
+          Write-Host "  bureau de votre machine Windows virtuelle !" -ForegroundColor Yellow
+          Write-Host "==============================================="`n
+
+          $maxSeconds = 20400
+          $elapsed = 0
+          
           if (Test-Path "D:\RDP_Data\stop.txt") { Remove-Item "D:\RDP_Data\stop.txt" -Force }
 
-          # Création de l'icône d'arrêt sur le bureau
-          $buttonScript = @"
-          @echo off
-          title Sauvegarde et Fermeture RDP
-          echo ===================================================
-          echo Fermeture propre des outils et envoi du signal...
-          echo ===================================================
-          echo stop > D:\RDP_Data\stop.txt
-          "@
-          Set-Content "C:\Users\Public\Desktop\Sauvegarder_et_Quitter.bat" $buttonScript
-
-          # Surveillance simple (Durée maximale : 340 minutes)
-          $totalSeconds = 20400
-          for ($i = 0; $i -lt $totalSeconds; $i += 10) {
-              Start-Sleep -Seconds 10
-
+          while ($elapsed -lt $maxSeconds) {
               if (Test-Path "D:\RDP_Data\stop.txt") {
-                  Write-Host "Signal d'arrêt intercepté. Fermeture en cours..."
+                  Remove-Item "D:\RDP_Data\stop.txt" -Force
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Signal d'arret recu ! Fermeture propre pour sauvegarde..." -ForegroundColor Green
                   break
+              }
+              Start-Sleep -Seconds 10
+              $elapsed += 10
+              if (($elapsed % 300) -eq 0) {
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Session RDP toujours active..."
               }
           }
 
-      - name: "Fermeture sécurisée et libération des fichiers"
+      # ==========================================
+      # NETTOYAGE POUR SAUVEGARDE DU CACHE
+      # ==========================================
+      - name: "Fermeture des outils et libération des fichiers"
         if: always()
         shell: powershell
         run: |
-          Write-Host "Arrêt forcé des applications pour libérer le cache..."
+          Write-Host "Arrêt des applications pour permettre au cache de se sauvegarder proprement..."
           Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
           Stop-Process -Name "Code" -Force -ErrorAction SilentlyContinue
           Stop-Process -Name "java" -Force -ErrorAction SilentlyContinue
+          Stop-Process -Name "studio64" -Force -ErrorAction SilentlyContinue
           Stop-Process -Name "adb" -Force -ErrorAction SilentlyContinue
           
-          # Pause de sécurité pour laisser le disque souffler avant la compression du cache
           Start-Sleep -Seconds 5
-          Write-Host "Fichiers libérés. Lancement de la sauvegarde automatique."
+          Write-Host "Fichiers libérés. Lancement de la sauvegarde du cache GitHub."
