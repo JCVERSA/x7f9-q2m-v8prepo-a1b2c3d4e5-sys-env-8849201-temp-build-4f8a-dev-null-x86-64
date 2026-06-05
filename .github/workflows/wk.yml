@@ -1,4 +1,4 @@
-name: RDP-Development-Environment
+name: Chill 
 
 on:
   workflow_dispatch:
