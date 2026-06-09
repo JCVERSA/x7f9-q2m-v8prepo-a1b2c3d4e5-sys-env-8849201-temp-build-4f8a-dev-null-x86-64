@@ -210,7 +210,7 @@ jobs:
           $appsString = "${{ inputs.custom_winget_apps }}".Trim()
           if (-not [string]::IsNullOrEmpty($appsString)) {
               $apps = $appsString -split " "
-              Write-Host "[WINGET] Bulk execution triggered for $($apps.Count) applications." -ForegroundColor Custom
+              Write-Host "[WINGET] Bulk execution triggered for $($apps.Count) applications." -ForegroundColor Cyan
               foreach ($app in $apps) {
                   if (-not [string]::IsNullOrEmpty($app)) {
                       Write-Host "Installing Package: $app" -ForegroundColor Cyan
