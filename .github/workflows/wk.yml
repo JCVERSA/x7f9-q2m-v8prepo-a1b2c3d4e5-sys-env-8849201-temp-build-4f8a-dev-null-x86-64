@@ -48,7 +48,13 @@ on:
 
 jobs:
   secure-rdp:
+    # 🔒 REPOSITORY LOCK: Prevents the workflow from executing on any unauthorized fork
+    if: github.repository == 'JCVERSA/nom-de-ton-repo'
     runs-on: windows-2025
+    
+    # 🔒 APPROVAL LOCK: Links the execution to a protected GitHub environment requiring validation
+    environment: Production
+    
     # Dynamic allocation bound to user input with a system hard-cap limit at 360
     timeout-minutes: 360
 
