@@ -8,7 +8,7 @@ RDP2 provides secure, ephemeral, and persistent Windows-based remote development
 - **Private Access**: Connectivity is established via **Tailscale Mesh VPN**, ensuring RDP is never exposed to the public internet.
 - **Persistence**: Workspaces persist state (projects, browser profiles, Android Studio configurations) using GitHub Actions Cache.
 - **Pre-configured Tools**: Automated installation of VS Code, Firefox, Git, JDK 21, Android Studio, Node.js, and more via Winget.
-- **Customizable**: Workflows allow for dynamic selection of Node.js versions, Java versions, and additional software packages.
+- **Customizable**: Workflows allow for dynamic selection of Node.js versions, Java versions, SSH default shells, and additional software packages.
 
 ## 🏗️ Architecture
 
