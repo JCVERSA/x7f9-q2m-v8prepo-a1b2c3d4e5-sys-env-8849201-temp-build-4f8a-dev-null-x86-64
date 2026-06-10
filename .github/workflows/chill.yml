@@ -11,7 +11,6 @@ on:
       rdp_password:
         description: "Password for the RDP/SSH session"
         required: true
-        default: "DarkNeonPass2026!"
         type: string
       rdp_language:
         description: "System and Display Language for the Workspace"
@@ -47,7 +46,7 @@ on:
           - "11" # Legacy Android Compatibility
 
       # ==========================================
-      # VERROUS & ENGINS DE DÉPENDANCES (BOOLEANS)
+      # LOCKS & DEPENDENCY ENGINES (BOOLEANS)
       # ==========================================
       install_ssh_sftp:
         description: "Install and Configure OpenSSH & SFTP Server"
@@ -81,7 +80,7 @@ on:
         type: boolean
 
       # ==========================================
-      # ZONE DE CHARGEMENT DE MASSE (50+ APPS)
+      # BULK LOADING ZONE (50+ APPS)
       # ==========================================
       custom_winget_apps:
         description: "List of Apps to deploy via Winget (Leave empty to install nothing)"
@@ -90,30 +89,38 @@ on:
         default: ""
 
 # ========================================================
-# 🔒 SÉCURITÉ INFRASTRUCTURE : PERMISSIONS STRICTES RETENUES
+# 🔒 INFRASTRUCTURE SECURITY: STRICT PERMISSIONS RETAINED
 # ========================================================
 permissions:
-  contents: read   # Le serveur peut lire le code mais ne peut rien modifier sur ton GitHub
-  actions: read    # Accès en lecture seule aux statuts
+  contents: read   # The server can read the code but cannot modify anything on your GitHub
+  actions: read    # Read-only access to statuses
 
 jobs:
   secure-rdp:
-    # 🔒 REPOSITORY LOCK: Le workflow refusera catégoriquement de s'exécuter sur un fork tiers
+    # 🔒 REPOSITORY LOCK: The workflow will strictly refuse to run on a third-party fork
     if: github.repository == 'JCVERSA/KWEPING-space'
     runs-on: windows-2025
     
-    # 🔒 APPROVAL LOCK: Demande ton feu vert obligatoire et lie l'accès au secret de l'environnement
+    # 🔒 APPROVAL LOCK: Requires mandatory manual approval and links access to the environment secret
     environment: Production
     
-    # Limitation stricte de l'allocation dynamique
+    # Strict dynamic allocation limit
     timeout-minutes: 360
 
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
+      - name: "Verify Drive D Availability"
+        shell: powershell
+        run: |
+          if (-not (Test-Path "D:")) {
+              Write-Error "Drive D: is not available. Persistence cannot be guaranteed."
+              exit 1
+          }
+
       # ==========================================
-      # 1. INITIALISATION DE LA STRUCTURE SUR D:
+      # 1. STRUCTURE INITIALIZATION ON D:
       # ==========================================
       - name: "Initialize directory structure on Drive D"
         shell: powershell
@@ -133,7 +140,7 @@ jobs:
           }
 
       # ==========================================
-      # 2. RESTAURATION ET SAUVEGARDE DES CACHES
+      # 2. RESTORATION AND SAVING OF CACHES
       # ==========================================
       - name: "Cache 1: Personal Projects & Sites"
         uses: actions/cache@v4
@@ -164,7 +171,7 @@ jobs:
           restore-keys: rdp-android-studio-
 
       # ==========================================
-      # 3. DÉPLOIMENT DES RUNTIMES (NODE & JAVA)
+      # 3. RUNTIME DEPLOYMENT (NODE & JAVA)
       # ==========================================
       - name: "Deploy Selected Runtime: Node.js v${{ inputs.node_version }}"
         uses: actions/setup-node@v4
@@ -178,7 +185,7 @@ jobs:
           java-version: ${{ inputs.java_version }}
 
       # ==========================================
-      # 3.4 DEPLOIMENT DU SERVEUR SSH / SFTP
+      # 3.4 SSH / SFTP SERVER DEPLOYMENT
       # ==========================================
       - name: "Provision OpenSSH & SFTP Server Engine"
         shell: powershell
@@ -191,7 +198,7 @@ jobs:
               Start-Service sshd
               Set-Service -Name sshd -StartupType 'Automatic'
               
-              # Ouverture du port 22 uniquement pour la plage IP Tailscale (Sécurité Zero Trust)
+              # Port 22 open only for Tailscale IP range (Zero Trust Security)
               Write-Host "[SSH] Securing firewall rules for Tailscale ecosystem..." -ForegroundColor Cyan
               netsh advfirewall firewall delete rule name="OpenSSH-Server-In-TCP" 2>$null
               netsh advfirewall firewall add rule name="SSH-SFTP-Tailscale" dir=in action=allow protocol=TCP localport=22 remoteip=100.64.0.0/10
@@ -202,7 +209,7 @@ jobs:
           }
 
       # ==========================================
-      # 3.5 DEPLOYEMENT DES OUTILS PERSONNALISÉS
+      # 3.5 CUSTOM ARCHITECT TOOLS DEPLOYMENT
       # ==========================================
       - name: "Provision Custom Architect Tools"
         shell: powershell
@@ -238,7 +245,7 @@ jobs:
           }
 
       # ==========================================
-      # 3.6 DEPLOYEMENT DE MASSE (WINGET)
+      # 3.6 BULK DEPLOYMENT (WINGET)
       # ==========================================
       - name: "Bulk Applications Delivery"
         shell: powershell
@@ -258,7 +265,7 @@ jobs:
           }
 
       # ==========================================
-      # 4. CONFIGURATION DU SERVEUR RDP
+      # 4. RDP SERVER CONFIGURATION
       # ==========================================
       - name: "Configure Core RDP Settings"
         shell: powershell
@@ -273,7 +280,7 @@ jobs:
           Restart-Service -Name TermService -Force
 
       # ==========================================
-      # 5. CONFIGURATION DE LA LANGUE SYSTÈME
+      # 5. SYSTEM LANGUAGE CONFIGURATION
       # ==========================================
       - name: "Apply Requested Workspace Language Pack"
         shell: powershell
@@ -317,7 +324,7 @@ jobs:
           }
 
       # ==========================================
-      # 6. VARIABLES D'ENVIRONNEMENT PERSISTANTES
+      # 6. PERSISTENT ENVIRONMENT VARIABLES
       # ==========================================
       - name: "Enforce persistent environment structures"
         shell: powershell
@@ -330,7 +337,7 @@ jobs:
           echo "ANDROID_USER_HOME=D:\RDP_Data\AndroidConfig\.android" >> $env:GITHUB_ENV
 
       # ==========================================
-      # 7. ARCHITECTURE RÉSEAU VPN (TAILSCALE)
+      # 7. VPN NETWORK ARCHITECTURE (TAILSCALE)
       # ==========================================
       - name: "Install Tailscale Engine"
         shell: powershell
@@ -357,7 +364,7 @@ jobs:
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
       # ==========================================
-      # 8. MAINTIEN DE LA SESSION ET SCRIPT DE SORTIE
+      # 8. CONNECTION MAINTENANCE AND EXIT SCRIPT
       # ==========================================
       - name: "Maintain Connection Loop"
         shell: powershell
@@ -380,7 +387,7 @@ jobs:
           "@
           Set-Content -Path $shortcutPath -Value $scriptContent -Force
 
-          # Calcul du timeout dynamique
+          # Dynamic timeout calculation
           [int]$inputMinutes = ${{ inputs.rdp_timeout }}
           if ($inputMinutes -gt 350 -or $inputMinutes -le 0) { $inputMinutes = 350 }
           $maxSeconds = $inputMinutes * 60
@@ -427,7 +434,7 @@ jobs:
           }
 
       # ==========================================
-      # 9. NETTOYAGE DES FLUX ET FIN DE MACHINE
+      # 9. STREAM CLEANUP AND MACHINE SHUTDOWN
       # ==========================================
       - name: "Kill processes and release file system locks"
         if: always()

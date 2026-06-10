@@ -6,16 +6,24 @@ on:
 jobs:
   secure-rdp:
     runs-on: windows-2025
-    timeout-minutes: 350
+    timeout-minutes: 360
 
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v4
 
+      - name: "Verify Drive D Availability"
+        shell: powershell
+        run: |
+          if (-not (Test-Path "D:")) {
+              Write-Error "Drive D: is not available. Persistence cannot be guaranteed."
+              exit 1
+          }
+
       # ==========================================
-      # 1. INITIALISATION DE L'ARBORESCENCE SUR D:
+      # 1. DIRECTORY STRUCTURE INITIALIZATION ON D:
       # ==========================================
-      - name: "Initialiser l'arborescence sur le Disque D"
+      - name: "Initialize directory structure on Drive D"
         shell: powershell
         run: |
           $dirs = @(
@@ -33,9 +41,9 @@ jobs:
           }
 
       # ==========================================
-      # 2. RESTAURATION & SAUVEGARDE DES CACHES
+      # 2. RESTORATION & SAVING OF CACHES
       # ==========================================
-      - name: "Cache 1 : Projets Personnels & Sites"
+      - name: "Cache 1: Personal Projects & Sites"
         uses: actions/cache@v4
         with:
           path: D:\RDP_Data\Projects
@@ -43,7 +51,7 @@ jobs:
           restore-keys: rdp-projects-
           save-always: true
 
-      - name: "Cache 2 : Profil Firefox Persistant"
+      - name: "Cache 2: Persistent Firefox Profile"
         uses: actions/cache@v4
         with:
           path: D:\RDP_Data\FirefoxProfile
@@ -51,7 +59,7 @@ jobs:
           restore-keys: rdp-firefox-
           save-always: true
 
-      - name: "Cache 3 : Dépendances Gradle Android"
+      - name: "Cache 3: Android Gradle Dependencies"
         uses: actions/cache@v4
         with:
           path: D:\RDP_Data\AndroidConfig\.gradle
@@ -59,7 +67,7 @@ jobs:
           restore-keys: rdp-gradle-
           save-always: true
 
-      - name: "Cache 4 : Configuration & SDK Android Studio"
+      - name: "Cache 4: Android Studio Config & SDK"
         uses: actions/cache@v4
         with:
           path: D:\RDP_Data\AndroidConfig
@@ -68,7 +76,7 @@ jobs:
           save-always: true
 
       # ==========================================
-      # 3. CONFIGURATION DU SYSTÈME & PARAMÈTRES RDP
+      # 3. SYSTEM CONFIGURATION & RDP SETTINGS
       # ==========================================
       - name: "Configure Core RDP Settings"
         shell: powershell
@@ -93,9 +101,9 @@ jobs:
           }
 
       # ==========================================
-      # 4. INSTALLATION DES OUTILS DE DÉVELOPPEMENT
+      # 4. INSTALLATION OF DEVELOPMENT TOOLS
       # ==========================================
-      - name: "Installer les applications de travail (Winget)"
+      - name: "Install development tools (Winget)"
         shell: powershell
         run: |
           winget source update --disable-interactivity
@@ -108,14 +116,14 @@ jobs:
               "OpenJS.NodeJS"
           )
           foreach ($pkg in $packages) {
-              Write-Host "Installation de $pkg..."
+              Write-Host "Installing $pkg..."
               winget install --id $pkg --silent --accept-source-agreements --accept-package-agreements --disable-interactivity -e
           }
 
       # ==========================================
-      # 5. CONFIGURATION DE L'ENVIRONNEMENT ET DES RACCOURCIS
+      # 5. ENVIRONMENT CONFIGURATION & SHORTCUTS
       # ==========================================
-      - name: "Forcer la persistance d'Android Studio et configurer les raccourcis bureau"
+      - name: "Enforce persistent environment structures and desktop shortcuts"
         shell: powershell
         run: |
           [Environment]::SetEnvironmentVariable("GRADLE_USER_HOME", "D:\RDP_Data\AndroidConfig\.gradle", "Machine")
@@ -142,9 +150,9 @@ jobs:
           $androidShortcut.Save()
 
       # ==========================================
-      # 6. RÉSEAU VPN (TAILSCALE)
+      # 6. VPN NETWORK (TAILSCALE)
       # ==========================================
-      - name: "Install Tailscale"
+      - name: "Install Tailscale Engine"
         shell: powershell
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
@@ -169,40 +177,40 @@ jobs:
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
       # ==========================================
-      # 7. MAINTIEN DE LA SESSION & DETECTION D'ARRÊT
+      # 7. CONNECTION MAINTENANCE & SHUTDOWN DETECTION
       # ==========================================
-      - name: "Maintain Connection"
+      - name: "Maintain Connection Loop"
         shell: powershell
         run: |
           $publicDesktop = "C:\Users\Public\Desktop"
-          $shortcutPath = "$publicDesktop\Sauvegarder_et_Quitter.bat"
+          $shortcutPath = "$publicDesktop\Save_and_Exit.bat"
           $scriptContent = @"
           @echo off
           echo ===================================================
-          echo   SAUVEGARDE DE VOS PROJETS ET FERMETURE DU RDP
+          echo    SAVING YOUR PROJECTS AND CLOSING WORKSPACE RDP
           echo ===================================================
           echo.
-          echo Envoi du signal d'arret a GitHub...
+          echo Transmitting stop notification flag to GitHub...
           echo stop > D:\RDP_Data\stop.txt
           echo.
-          echo Vous pouvez desormais fermer cette fenetre RDP.
-          echo GitHub va valider la session et sauvegarder vos dossiers.
+          echo You can now safely close this Remote Desktop window.
+          echo GitHub Actions will finalize cache commit operations.
           echo.
           pause
           "@
           Set-Content -Path $shortcutPath -Value $scriptContent -Force
 
           Write-Host "`n===============================================" -ForegroundColor Green
-          Write-Host "          CONNEXION RDP PRÊTE                  " -ForegroundColor Green
+          Write-Host "          WINDOWS RDP RUNTIME ONLINE           " -ForegroundColor Green
           Write-Host "===============================================" -ForegroundColor Green
-          Write-Host "Adresse IP Tailscale : $env:TAILSCALE_IP" -ForegroundColor Cyan
-          Write-Host "Utilisateur          : Neon" -ForegroundColor Cyan
-          Write-Host "Mot de passe         : [Utilisez votre secret RDP_PASS]" -ForegroundColor Cyan
+          Write-Host "Tailscale IP Address : $env:TAILSCALE_IP" -ForegroundColor Cyan
+          Write-Host "Active Username      : Neon" -ForegroundColor Cyan
+          Write-Host "Active Password      : [Use your RDP_PASS secret]" -ForegroundColor Cyan
           Write-Host "-----------------------------------------------"
-          Write-Host "⚠️ IMPORTANT POUR NE RIEN PERDRE : ⚠️" -ForegroundColor Red
-          Write-Host "Quand vous avez fini, double-cliquez sur l'icone" -ForegroundColor Yellow
-          Write-Host "  'Sauvegarder_et_Quitter' directement sur le" -ForegroundColor Yellow
-          Write-Host "  bureau de votre machine Windows virtuelle !" -ForegroundColor Yellow
+          Write-Host "⚠️  CRITICAL FOR PERSISTENCE MAPS: ⚠️" -ForegroundColor Red
+          Write-Host "When your work session is finished, execute the" -ForegroundColor Yellow
+          Write-Host "  'Save_and_Exit' script shortcut found directly" -ForegroundColor Yellow
+          Write-Host "  on your cloud instance Windows Desktop interface!" -ForegroundColor Yellow
           Write-Host "==============================================="`n
 
           $maxSeconds = 21000
@@ -213,24 +221,24 @@ jobs:
           while ($elapsed -lt $maxSeconds) {
               if (Test-Path "D:\RDP_Data\stop.txt") {
                   Remove-Item "D:\RDP_Data\stop.txt" -Force
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Signal d'arret recu ! Fermeture propre pour sauvegarde..." -ForegroundColor Green
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Shutdown trigger caught! Initializing unmount procedures..." -ForegroundColor Green
                   break
               }
               Start-Sleep -Seconds 10
               $elapsed += 10
               if (($elapsed % 300) -eq 0) {
-                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Session RDP toujours active..."
+                  Write-Host "[$(Get-Date -Format 'HH:mm:ss')] RDP session still active..."
               }
           }
 
       # ==========================================
-      # 8. NETTOYAGE STRICT (LIBÉRATION DES VERROUS CACHE)
+      # 8. STRICT CLEANUP (RELEASE CACHE LOCKS)
       # ==========================================
-      - name: "Fermeture des outils et libération des fichiers"
+      - name: "Kill processes and release file system locks"
         if: always()
         shell: powershell
         run: |
-          Write-Host "Arrêt des applications pour libérer les verrous sur les fichiers..."
+          Write-Host "Stopping active background programs to unlock cache runtimes..."
           Stop-Process -Name "firefox" -Force -ErrorAction SilentlyContinue
           Stop-Process -Name "Code" -Force -ErrorAction SilentlyContinue
           Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
@@ -239,4 +247,4 @@ jobs:
           Stop-Process -Name "adb" -Force -ErrorAction SilentlyContinue
           
           Start-Sleep -Seconds 5
-          Write-Host "Fichiers libérés avec succès."
+          Write-Host "File locks released successfully. System ready for safe cache tracking."
